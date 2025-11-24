@@ -1,0 +1,162 @@
+"""empty message
+
+Revision ID: 749b45f2d115
+Revises: 5f2c66f91490
+Create Date: 2025-04-25 17:27:24.775188
+
+"""
+
+from alembic import op
+import sqlalchemy as sa
+from sqlmodel import Session
+
+from app.models.technology_category import TechnologyCategory
+
+
+# revision identifiers, used by Alembic.
+revision = "749b45f2d115"
+down_revision = "5f2c66f91490"
+branch_labels = None
+depends_on = None
+
+CATEGORY_LIST = [
+    {"id": 1, "name": "CMS"},
+    {"id": 2, "name": "Message boards"},
+    {"id": 3, "name": "Database managers"},
+    {"id": 4, "name": "Documentation"},
+    {"id": 5, "name": "Widgets"},
+    {"id": 6, "name": "Ecommerce"},
+    {"id": 7, "name": "Photo galleries"},
+    {"id": 8, "name": "Wikis"},
+    {"id": 9, "name": "Hosting panels"},
+    {"id": 10, "name": "Analytics"},
+    {"id": 11, "name": "Blogs"},
+    {"id": 12, "name": "JavaScript frameworks"},
+    {"id": 13, "name": "Issue trackers"},
+    {"id": 14, "name": "Video players"},
+    {"id": 15, "name": "Comment systems"},
+    {"id": 16, "name": "Security"},
+    {"id": 17, "name": "Font scripts"},
+    {"id": 18, "name": "Web frameworks"},
+    {"id": 19, "name": "Miscellaneous"},
+    {"id": 20, "name": "Editors"},
+    {"id": 21, "name": "LMS"},
+    {"id": 22, "name": "Web servers"},
+    {"id": 23, "name": "Caching"},
+    {"id": 24, "name": "Rich text editors"},
+    {"id": 25, "name": "JavaScript graphics"},
+    {"id": 26, "name": "Mobile frameworks"},
+    {"id": 27, "name": "Programming languages"},
+    {"id": 28, "name": "Operating systems"},
+    {"id": 29, "name": "Search engines"},
+    {"id": 30, "name": "Webmail"},
+    {"id": 31, "name": "CDN"},
+    {"id": 32, "name": "Marketing automation"},
+    {"id": 33, "name": "Web server extensions"},
+    {"id": 34, "name": "Databases"},
+    {"id": 35, "name": "Maps"},
+    {"id": 36, "name": "Advertising"},
+    {"id": 37, "name": "Network devices"},
+    {"id": 38, "name": "Media servers"},
+    {"id": 39, "name": "Webcams"},
+    {"id": 41, "name": "Payment processors"},
+    {"id": 42, "name": "Tag managers"},
+    {"id": 44, "name": "CI"},
+    {"id": 45, "name": "Control systems"},
+    {"id": 46, "name": "Remote access"},
+    {"id": 47, "name": "Development"},
+    {"id": 48, "name": "Network storage"},
+    {"id": 49, "name": "Feed readers"},
+    {"id": 50, "name": "DMS"},
+    {"id": 51, "name": "Page builders"},
+    {"id": 52, "name": "Live chat"},
+    {"id": 53, "name": "CRM"},
+    {"id": 54, "name": "SEO"},
+    {"id": 55, "name": "Accounting"},
+    {"id": 56, "name": "Cryptominers"},
+    {"id": 57, "name": "Static site generator"},
+    {"id": 58, "name": "User onboarding"},
+    {"id": 59, "name": "JavaScript libraries"},
+    {"id": 60, "name": "Containers"},
+    {"id": 62, "name": "PaaS"},
+    {"id": 63, "name": "IaaS"},
+    {"id": 64, "name": "Reverse proxies"},
+    {"id": 65, "name": "Load balancers"},
+    {"id": 66, "name": "UI frameworks"},
+    {"id": 67, "name": "Cookie compliance"},
+    {"id": 68, "name": "Accessibility"},
+    {"id": 69, "name": "Authentication"},
+    {"id": 70, "name": "SSL/TLS certificate authorities"},
+    {"id": 71, "name": "Affiliate programs"},
+    {"id": 72, "name": "Appointment scheduling"},
+    {"id": 73, "name": "Surveys"},
+    {"id": 74, "name": "A/B Testing"},
+    {"id": 75, "name": "Email"},
+    {"id": 76, "name": "Personalisation"},
+    {"id": 77, "name": "Retargeting"},
+    {"id": 78, "name": "RUM"},
+    {"id": 79, "name": "Geolocation"},
+    {"id": 80, "name": "WordPress themes"},
+    {"id": 81, "name": "Shopify themes"},
+    {"id": 82, "name": "Drupal themes"},
+    {"id": 83, "name": "Browser fingerprinting"},
+    {"id": 84, "name": "Loyalty & rewards"},
+    {"id": 85, "name": "Feature management"},
+    {"id": 86, "name": "Segmentation"},
+    {"id": 87, "name": "WordPress plugins"},
+    {"id": 88, "name": "Hosting"},
+    {"id": 89, "name": "Translation"},
+    {"id": 90, "name": "Reviews"},
+    {"id": 91, "name": "Buy now pay later"},
+    {"id": 92, "name": "Performance"},
+    {"id": 93, "name": "Reservations & delivery"},
+    {"id": 94, "name": "Referral marketing"},
+    {"id": 95, "name": "Digital asset management"},
+    {"id": 96, "name": "Content curation"},
+    {"id": 97, "name": "Customer data platform"},
+    {"id": 98, "name": "Cart abandonment"},
+    {"id": 99, "name": "Shipping carriers"},
+    {"id": 100, "name": "Shopify apps"},
+    {"id": 101, "name": "Recruitment & staffing"},
+    {"id": 102, "name": "Returns"},
+    {"id": 103, "name": "Livestreaming"},
+    {"id": 104, "name": "Ticket booking"},
+    {"id": 105, "name": "Augmented reality"},
+    {"id": 106, "name": "Cross border ecommerce"},
+    {"id": 107, "name": "Fulfilment"},
+    {"id": 108, "name": "Ecommerce frontends"},
+    {"id": 109, "name": "Domain parking"},
+    {"id": 110, "name": "Form builders"},
+    {"id": 111, "name": "Fundraising & donations"},
+]
+
+
+def upgrade() -> None:
+    # ### commands auto generated by Alembic - please adjust! ###
+    op.create_table(
+        "technologies",
+        sa.Column("corporate_number", sa.Text(), nullable=True),
+        sa.Column("name", sa.String(length=1024), nullable=True),
+        sa.Column("website", sa.Text(), nullable=True),
+        sa.Column("icon", sa.Text(), nullable=True),
+        sa.Column("technology_category_id", sa.Integer(), nullable=True),
+        sa.Column("id", sa.Integer(), nullable=False),
+        sa.PrimaryKeyConstraint("id"),
+    )
+    op.create_table(
+        "technology_categories",
+        sa.Column("name", sa.String(length=1024), nullable=True),
+        sa.Column("id", sa.Integer(), nullable=False),
+        sa.PrimaryKeyConstraint("id"),
+    )
+    session = Session(op.get_bind())
+    session.bulk_insert_mappings(TechnologyCategory, CATEGORY_LIST)
+    session.commit()
+    # ### end Alembic commands ###
+
+
+def downgrade() -> None:
+    # ### commands auto generated by Alembic - please adjust! ###
+    op.drop_table("technology_categories")
+    op.drop_table("technologies")
+    # ### end Alembic commands ###

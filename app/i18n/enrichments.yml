@@ -1,0 +1,4 @@
+ja:
+  enrichmentNotFound: データ充実のリストがが見つかりません。
+  enrichmentColumnJsonMappingRequired: エラーが発生しました。後で再試行してください。
+  enrichmentNameRequired: リスト名を入力してください。

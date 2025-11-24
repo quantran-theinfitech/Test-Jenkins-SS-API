@@ -1,0 +1,11 @@
+ja:
+  missingNameOrEmail: 名前またはメールアドレスを入力してください
+  emailAlreadyExsist: メールアドレスは既に存在します
+  invalidFileFormat: ファイル形式が正しくありません
+  invalidDataType: データタイプが正しくありません
+  canNotAssignScheduleThatWillBeDeleted: 削除されるスケジュールを割り当てることはできません
+  scheduleNotFound: スケジュールが見つかりません
+  missingName: 名前は必須です。名前を入力して、再度お試しください。
+  emailAlreadyExists: メールが既に存在しています。別のメールを再入力してください。
+  linkedinAlreadyExists: LinkedInのURLが既に存在しています。別のURLを再入力してください。
+  emailAndLinkedinAlreadyExist: メールが既に存在しています。別のメールを再入力してください。\nLinkedInのURLが既に存在しています。別のURLを再入力してください。

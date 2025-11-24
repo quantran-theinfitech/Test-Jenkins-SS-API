@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+            line-height: 1;
+        }
+        p {
+          margin-top: 10px;
+          margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+        <tr>
+            <td align="left">
+                <div>
+                    <p>お客様</p>
+                    <br>
+                    <p>お客様は【SalesSmart】をご利用頂き、ありがとうございます。</p>
+                    <br>
+                    <p>お客様がご利用のメールアドレス： {{email}} </p>
+                    <p>アカウントを作成定するためのURL： <a href="{{url}}"">{{url}}</a> </p>
+                    <br>
+                    <p>上記のURLにアクセスするとアカウントの作成画面に移動いたします。アカウントをするすることで、ご利用いただけます。</p>
+
+                    <p style="color: red">※上記URLにアクセスお願いします。URLの有効期限は24時となります。それ以降のアクセスは無効となりますのでご注意ください。</p>
+                </div>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>

@@ -1,0 +1,12 @@
+ja:
+  incorrectFormat: ファイル形式が正しくありません
+  missingRequiredCompanyName: "エラーのためインポートに失敗しました 必須の会社名"
+  missingRequiredPersonName: "エラーのためインポートに失敗しました 必須の個人名"
+  invalidTemplateError: "テンプレートエラーが不正なためインポートに失敗しました"
+  unsupportedEncoding: "サポートされていないエンコーディング"
+  failedToDecode: "ファイルのデコードに失敗しました"
+  incompatibleColumns: "アップロードされたファイルは既存の強化ファイルと互換性がありません"
+  encodingMismatch: "エンコーディングの不一致"
+  invalidJsonMapping: "無効なJSONマッピング"
+  fileTooLarge: "ファイルサイズが大きすぎます"
+  exceedEnrichmentItem: "アップロードされたファイルのレコード数が上限を超えています"

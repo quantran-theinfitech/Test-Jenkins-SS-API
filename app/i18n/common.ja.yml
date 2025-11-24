@@ -1,0 +1,9 @@
+ja:
+  notFound: 見つかりません
+  hasTooManyCompanies: 一度にダウンロードされる企業が多すぎます
+  hasTooManyPersons: 一度にダウンロードされる人が多すぎます
+  duplicateName: この名前は既に使用されています
+  companyIsLock: この企業はロックされています
+  ssCompanyIsNone: SaleSmartに関連付けられた企業がありません。
+  hubspotCompanyIsNone: Hubspotに関連付けられた企業がありません。
+  companyIsLinked: この企業は既にリンクされています

@@ -1,0 +1,55 @@
+[tool.poetry]
+name = "salesbox-api"
+version = "0.1.0"
+description = ""
+authors = ["Theinfitech <support@theinfitech.com>"]
+readme = "README.md"
+packages = [
+    { include = "app" }
+]
+
+[tool.poetry.dependencies]
+python = "^3.8"
+fastapi = "^0.85.0"
+alembic = "^1.8.1"
+sqlmodel = "^0.0.8"
+pydantic = {extras = ["dotenv"], version = "^1.10.2"}
+uvicorn = {extras = ["uvloop"], version = "^0.23.1"}
+psycopg2 = "^2.9.3"
+elasticsearch = {version = "<7.14.0", extras = ["async"]}
+elasticsearch-dsl = "^7.4.1"
+python-jose = "^3.3.0"
+fastapi-mail = "1.2.0"
+passlib = "^1.7.4"
+bcrypt = "^4.0.1"
+python-i18n = "^0.3.9"
+gunicorn = "^20.1.0"
+beautifulsoup4 = "^4.12.2"
+tldextract = "^3.4.4"
+pandas = "^2.0.3"
+python-multipart = "^0.0.6"
+hashids = "^1.3.1"
+hypercorn = {extras = ["trio"], version = "^0.14.4"}
+boto3 = "^1.28.69"
+hubspot-api-client = "11.1.0"
+simple-salesforce = "1.12.6"
+requests = "^2.31.0"
+requests-oauthlib = "^2.0.0"
+google-auth = "^2.38.0"
+google-auth-oauthlib = "^1.2.1"
+google-api-python-client = "^2.163.0"
+celery = "^5.4.0"
+gspread = "^6.2.0"
+chardet = "^5.2.0"
+sentry-sdk = "^2.29.0"
+phonenumbers = "^9.0.8"
+redis = "<6.2.0"
+apscheduler = "3.10.4"
+
+[tool.poetry.group.dev.dependencies]
+black = "^22.8.0"
+pre-commit = "^2.20.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

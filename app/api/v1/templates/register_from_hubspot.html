@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <style>
+      body {
+        margin: 0;
+        padding: 0;
+        font-family: Arial, sans-serif;
+      }
+      .content {
+        background-color: #f5f5f5;
+        padding: 20px;
+        border-radius: 10px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        max-width: 600px;
+        width: 100%;
+        opacity: 0.87;
+        margin: 0 auto;
+        color: #121831;
+      }
+      .button {
+        border: none;
+        padding: 15px 32px;
+        text-align: center;
+        text-decoration: none;
+        display: inline-block;
+        font-size: 16px;
+        margin: 4px 2px;
+        cursor: pointer;
+        border-radius: 10px;
+        background-color: #5877f2;
+      }
+      .button-container {
+        text-align: center;
+      }
+    </style>
+  </head>
+  <body>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+      <tr>
+        <td align="center">
+          <div class="content">
+            <p>お客様</p>
+            <p>以下の認証情報にてログインいただけます：</p>
+            <p>メールアドレス：{{email}}</p>
+            <p>初期パスワード：{{password}}</p>
+            <p
+              style="
+                border-bottom: 1px solid black;
+                padding-bottom: 5px;
+                width: 200px;
+              "
+            ></p>
+            <p style="font-size: x-small; opacity: 0.5">
+              ※本認証情報のご利用をお願いいたします。アカウントの有効期限は24時間です。
+            </p>
+            <p style="font-size: x-small; opacity: 0.5">
+              期限を過ぎますとご利用いただけなくなりますので、ご注意ください。
+            </p>
+          </div>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>

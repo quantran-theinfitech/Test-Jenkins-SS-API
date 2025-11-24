@@ -1,0 +1,4 @@
+from .get_message_template_detail_service import get_message_template_detail_service
+from .update_message_template_serivce import update_message_template_service
+
+__all__ = ["get_message_template_detail_service", "update_message_template_service"]

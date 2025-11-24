@@ -1,0 +1,48 @@
+name: Deploy Batch
+
+# manually trigger
+on:
+  workflow_dispatch:
+
+env:
+  AWS_REGION: us-east-1 # set this to your preferred AWS region, e.g. us-west-1
+  BATCH_ECR_REPOSITORY: salessmart_v2_dev_api
+
+permissions:
+  contents: read
+
+jobs:
+  deploy-batch:
+    name: Deploy Batch Dev v2
+    runs-on: ubuntu-latest
+    environment: dev
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Retrieve env file
+        run: |
+          echo "${{secrets.BACKEND_ENV_DEV }}" > .env
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+        with:
+          mask-password: "true"
+
+      - name: Build, tag, and push image to Amazon ECR
+        id: build-image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -f docker/batch.development.Dockerfile -t $ECR_REGISTRY/$BATCH_ECR_REPOSITORY:batch-latest .
+          docker push $ECR_REGISTRY/$BATCH_ECR_REPOSITORY:batch-latest
