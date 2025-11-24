@@ -1,17 +1,12 @@
 pipeline {
-  // Cấu hình trong Jenkins UI:
+  // CẤU HÌNH TRONG JENKINS UI:
   // 1. Pipeline -> Definition: "Pipeline script from SCM"
   // 2. SCM: Git
-  // 3. Repository URL: https://github.com/quantran-theinfitech/Test-Jenkins-SS-API.git
-  // 4. Branch: */dev_v2
+  // 3. Repository URL: 
+  //    (hoặc dùng credentials trong Jenkins thay vì hardcode PAT trong URL)
+  // 4. Branch Specifier: */dev_v2
   // 5. Script Path: Jenkinsfile.k8s
-  // 6. Enable "Build Triggers" -> "GitHub hook trigger for GITScm polling" (hoặc dùng pollSCM)
-  //
-  // CẤU HÌNH BIẾN MÔI TRƯỜNG GITHUB_PAT:
-  // Jenkins -> Manage Jenkins -> Configure System -> Global properties -> Environment variables
-  // Thêm biến: GITHUB_PAT =
-  // Hoặc trong Job: Configure -> Build Environment -> Use secret text(s) or file(s)
-  //   -> Bindings -> Add -> Secret text -> Variable: GITHUB_PAT
+  // 6. Build Triggers: Enable "GitHub hook trigger for GITScm polling" (hoặc dùng pollSCM trong Jenkinsfile)
   
   agent any
 
@@ -33,47 +28,9 @@ pipeline {
   stages {
     stage('Checkout') {
       steps {
+        // Jenkins tự động checkout code từ GitHub (đã cấu hình trong UI với SCM)
+        // SCM đã được cấu hình với URL: 
         script {
-          // URL với Personal Access Token từ biến môi trường Jenkins
-          // Cấu hình biến môi trường GITHUB_PAT trong Jenkins UI
-          def githubPat = env.GITHUB_PAT ?: ''
-          def repoBase = 'github.com/quantran-theinfitech/Test-Jenkins-SS-API.git'
-          def repoUrl = githubPat ? "https://${githubPat}@${repoBase}" : "https://${repoBase}"
-          def branch = 'dev_v2'
-          
-          if (!githubPat) {
-            echo "WARNING: GITHUB_PAT environment variable not set. Using public repository access."
-          }
-          
-          // Thử dùng checkout scm nếu có (khi dùng "Pipeline script from SCM")
-          // Nếu không có thì checkout thủ công
-          try {
-            checkout scm
-            echo "Using SCM checkout (Pipeline script from SCM)"
-          } catch (Exception e) {
-            echo "SCM checkout not available, using manual git checkout"
-            // Checkout thủ công bằng git commands
-            sh """
-              #!/bin/bash
-              set -e
-              
-              # Kiểm tra xem đã có git repo chưa
-              if [ -d .git ]; then
-                echo "Git repository found, updating..."
-                git fetch origin || true
-                git checkout ${branch} || git checkout -b ${branch} || true
-                git pull origin ${branch} || echo "Pull failed, continuing with existing code"
-              else
-                echo "Cloning repository ${repoUrl} branch ${branch}..."
-                git clone -b ${branch} ${repoUrl} . || {
-                  echo "Clone with branch failed, trying without branch specification"
-                  git clone ${repoUrl} .
-                  git checkout ${branch} || true
-                }
-              fi
-            """
-          }
-          
           // Lấy thông tin từ Git trực tiếp
           sh """
             echo "=== Git Information ==="
