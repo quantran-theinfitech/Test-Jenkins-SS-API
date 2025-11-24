@@ -30,42 +30,49 @@ jobs:
             -H "ngrok-skip-browser-warning: true" \
             "$JENKINS_URL/crumbIssuer/api/xml?xpath=concat(//crumbRequestField,\":\",//crumb)" 2>&1)
           
-          CRUMB=$(echo "$CRUMB_RESPONSE" | grep -v "<!DOCTYPE" | grep -v "<html" || echo "")
+          # Extract crumb from response (format: Jenkins-Crumb:token-value)
+          CRUMB=$(echo "$CRUMB_RESPONSE" | grep -E "^Jenkins-Crumb:" | head -1 || echo "")
           
-          if [ -n "$CRUMB" ] && [ "$CRUMB" != "$CRUMB_RESPONSE" ]; then
-            echo "CSRF token obtained"
-            CRUMB_HEADER="-H \"$CRUMB\""
+          if [ -n "$CRUMB" ]; then
+            echo "CSRF token obtained: ${CRUMB:0:20}..."
           else
             echo "No CSRF token required or failed to get"
-            CRUMB_HEADER=""
+            CRUMB=""
           fi
           
-          # Trigger build
+          # Trigger build with proper form submission
           echo "Triggering build..."
+          
+          # Build headers array
+          HEADERS=(-u "$JENKINS_USER:$JENKINS_TOKEN")
+          HEADERS+=(-H "ngrok-skip-browser-warning: true")
+          HEADERS+=(-H "Content-Type: application/x-www-form-urlencoded")
+          if [ -n "$CRUMB" ]; then
+            HEADERS+=(-H "$CRUMB")
+          fi
+          
+          # Try build endpoint with empty form data
           HTTP_CODE=$(curl -X POST \
-            -u "$JENKINS_USER:$JENKINS_TOKEN" \
-            -H "ngrok-skip-browser-warning: true" \
-            $CRUMB_HEADER \
+            "${HEADERS[@]}" \
+            --data "" \
             -s -w "%{http_code}" \
             -o /tmp/jenkins_response.txt \
-            "$JENKINS_URL/job/$JENKINS_JOB/build?delay=0sec" 2>&1)
+            "$JENKINS_URL/job/$JENKINS_JOB/build" 2>&1)
           
           RESPONSE=$(cat /tmp/jenkins_response.txt 2>/dev/null || echo "")
+          HTTP_CODE_ONLY=$(echo "$HTTP_CODE" | grep -oE '[0-9]{3}$' || echo "$HTTP_CODE")
           
-          # Check if response contains ngrok warning
-          if echo "$RESPONSE" | grep -q "ngrok"; then
-            echo "⚠ Detected ngrok warning page, trying with different approach..."
-            # Try with buildWithParameters
+          # If that fails, try buildWithParameters with json parameter
+          if [ "$HTTP_CODE_ONLY" != "201" ] && [ "$HTTP_CODE_ONLY" != "200" ]; then
+            echo "First attempt failed (HTTP $HTTP_CODE_ONLY), trying buildWithParameters..."
             HTTP_CODE=$(curl -X POST \
-              -u "$JENKINS_USER:$JENKINS_TOKEN" \
-              -H "ngrok-skip-browser-warning: true" \
-              $CRUMB_HEADER \
-              -H "Content-Type: application/x-www-form-urlencoded" \
-              -d "json={}" \
+              "${HEADERS[@]}" \
+              --data "json={}" \
               -s -w "%{http_code}" \
               -o /tmp/jenkins_response.txt \
               "$JENKINS_URL/job/$JENKINS_JOB/buildWithParameters" 2>&1)
             RESPONSE=$(cat /tmp/jenkins_response.txt 2>/dev/null || echo "")
+            HTTP_CODE_ONLY=$(echo "$HTTP_CODE" | grep -oE '[0-9]{3}$' || echo "$HTTP_CODE")
           fi
           
           # Extract HTTP code (might be mixed with response)
