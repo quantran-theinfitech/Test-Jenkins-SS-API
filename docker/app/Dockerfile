@@ -60,9 +60,10 @@ RUN poetry install --only main
 # `development` image is used during development / testing
 FROM python-base as development
 
-# copy in our built poetry + venv
+# copy in our built poetry + venv from builder-base (includes all dependencies)
 COPY --from=poetry-base $POETRY_HOME $POETRY_HOME
-
+# Copy venv from builder-base so uvicorn and other dependencies are available
+COPY --from=builder-base $PYSETUP_PATH $PYSETUP_PATH
 
 RUN apt-get update \
     && apt-get install --no-install-recommends -y \
@@ -81,7 +82,7 @@ WORKDIR /workspace
 
 EXPOSE 8000
 
-CMD ["/bin/bash", "-c", "while ! [ -x \"$(command -v uvicorn)\" ]; do sleep 1000; done; uvicorn --reload --host 0.0.0.0 app.main:app"]
+CMD ["/bin/bash", "-c", "uvicorn --reload --host 0.0.0.0 app.main:app"]
 
 # `production` image used for runtime
 FROM python-base as production
