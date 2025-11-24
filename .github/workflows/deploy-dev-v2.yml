@@ -21,20 +21,63 @@ jobs:
           
           echo "Triggering Jenkins job: $JENKINS_JOB at $JENKINS_URL"
           
-          # Get CSRF token if required
-          CRUMB=$(curl -s -u "$JENKINS_USER:$JENKINS_TOKEN" "$JENKINS_URL/crumbIssuer/api/xml?xpath=concat(//crumbRequestField,\":\",//crumb)" || echo "")
+          # Bypass ngrok warning page if needed
+          NGROK_BYPASS_HEADER="-H 'ngrok-skip-browser-warning: true'"
           
-          if [ -n "$CRUMB" ]; then
-            curl -X POST \
-              -u "$JENKINS_USER:$JENKINS_TOKEN" \
-              -H "$CRUMB" \
-              "$JENKINS_URL/job/$JENKINS_JOB/build"
+          # Get CSRF token
+          echo "Getting CSRF token..."
+          CRUMB_RESPONSE=$(curl -s -u "$JENKINS_USER:$JENKINS_TOKEN" \
+            -H "ngrok-skip-browser-warning: true" \
+            "$JENKINS_URL/crumbIssuer/api/xml?xpath=concat(//crumbRequestField,\":\",//crumb)" 2>&1)
+          
+          CRUMB=$(echo "$CRUMB_RESPONSE" | grep -v "<!DOCTYPE" | grep -v "<html" || echo "")
+          
+          if [ -n "$CRUMB" ] && [ "$CRUMB" != "$CRUMB_RESPONSE" ]; then
+            echo "CSRF token obtained"
+            CRUMB_HEADER="-H \"$CRUMB\""
           else
-            curl -X POST \
-              -u "$JENKINS_USER:$JENKINS_TOKEN" \
-              "$JENKINS_URL/job/$JENKINS_JOB/build"
+            echo "No CSRF token required or failed to get"
+            CRUMB_HEADER=""
           fi
           
-          echo "✓ Jenkins build triggered successfully!"
-          echo "Check Jenkins at: $JENKINS_URL/job/$JENKINS_JOB"
+          # Trigger build
+          echo "Triggering build..."
+          HTTP_CODE=$(curl -X POST \
+            -u "$JENKINS_USER:$JENKINS_TOKEN" \
+            -H "ngrok-skip-browser-warning: true" \
+            $CRUMB_HEADER \
+            -s -w "%{http_code}" \
+            -o /tmp/jenkins_response.txt \
+            "$JENKINS_URL/job/$JENKINS_JOB/build?delay=0sec" 2>&1)
+          
+          RESPONSE=$(cat /tmp/jenkins_response.txt 2>/dev/null || echo "")
+          
+          # Check if response contains ngrok warning
+          if echo "$RESPONSE" | grep -q "ngrok"; then
+            echo "⚠ Detected ngrok warning page, trying with different approach..."
+            # Try with buildWithParameters
+            HTTP_CODE=$(curl -X POST \
+              -u "$JENKINS_USER:$JENKINS_TOKEN" \
+              -H "ngrok-skip-browser-warning: true" \
+              $CRUMB_HEADER \
+              -H "Content-Type: application/x-www-form-urlencoded" \
+              -d "json={}" \
+              -s -w "%{http_code}" \
+              -o /tmp/jenkins_response.txt \
+              "$JENKINS_URL/job/$JENKINS_JOB/buildWithParameters" 2>&1)
+            RESPONSE=$(cat /tmp/jenkins_response.txt 2>/dev/null || echo "")
+          fi
+          
+          # Extract HTTP code (might be mixed with response)
+          HTTP_CODE_ONLY=$(echo "$HTTP_CODE" | tail -c 4 | grep -oE '[0-9]{3}' || echo "$HTTP_CODE")
+          
+          if [ "$HTTP_CODE_ONLY" = "201" ] || [ "$HTTP_CODE_ONLY" = "200" ]; then
+            echo "✓ Jenkins build triggered successfully! (HTTP $HTTP_CODE_ONLY)"
+            echo "Check Jenkins at: $JENKINS_URL/job/$JENKINS_JOB"
+          else
+            echo "✗ Failed to trigger build (HTTP $HTTP_CODE_ONLY)"
+            echo "Full response:"
+            echo "$RESPONSE" | head -20
+            exit 1
+          fi
 
