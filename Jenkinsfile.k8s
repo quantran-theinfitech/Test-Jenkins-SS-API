@@ -38,6 +38,7 @@ pipeline {
             echo "Git author: \$(git log -1 --pretty=format:'%an <%ae>' || echo 'unknown')"
             echo ""
             echo "Build triggered by: ${env.BUILD_CAUSE ?: 'unknown'}"
+          """
         }
       }
     }
