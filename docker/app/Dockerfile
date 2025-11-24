@@ -82,7 +82,8 @@ WORKDIR /workspace
 
 EXPOSE 8000
 
-CMD ["/bin/bash", "-c", "uvicorn --reload --host 0.0.0.0 app.main:app"]
+# Use venv explicitly - if venv doesn't exist (volume mount overwrote it), install dependencies first
+CMD ["/bin/bash", "-c", "if [ ! -d /workspace/.venv ] || [ ! -f /workspace/.venv/bin/uvicorn ]; then echo 'Installing dependencies...' && poetry install --only main; fi && /workspace/.venv/bin/uvicorn --reload --host 0.0.0.0 app.main:app"]
 
 # `production` image used for runtime
 FROM python-base as production
