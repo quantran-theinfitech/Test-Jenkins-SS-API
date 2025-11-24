@@ -75,16 +75,72 @@ jobs:
             HTTP_CODE_ONLY=$(echo "$HTTP_CODE" | grep -oE '[0-9]{3}$' || echo "$HTTP_CODE")
           fi
           
-          # Extract HTTP code (might be mixed with response)
-          HTTP_CODE_ONLY=$(echo "$HTTP_CODE" | tail -c 4 | grep -oE '[0-9]{3}' || echo "$HTTP_CODE")
+          # Extract HTTP code
+          HTTP_CODE_ONLY=$(echo "$HTTP_CODE" | grep -oE '[0-9]{3}$' || echo "$HTTP_CODE")
           
-          if [ "$HTTP_CODE_ONLY" = "201" ] || [ "$HTTP_CODE_ONLY" = "200" ]; then
-            echo "✓ Jenkins build triggered successfully! (HTTP $HTTP_CODE_ONLY)"
-            echo "Check Jenkins at: $JENKINS_URL/job/$JENKINS_JOB"
-          else
+          if [ "$HTTP_CODE_ONLY" != "201" ] && [ "$HTTP_CODE_ONLY" != "200" ]; then
             echo "✗ Failed to trigger build (HTTP $HTTP_CODE_ONLY)"
             echo "Full response:"
             echo "$RESPONSE" | head -20
             exit 1
           fi
+          
+          echo "✓ Jenkins build triggered successfully! (HTTP $HTTP_CODE_ONLY)"
+          
+          # Get build number from Location header or lastBuild
+          echo "Waiting for build to start..."
+          sleep 3
+          
+          # Poll build status until complete
+          MAX_WAIT=1800  # 30 minutes max
+          ELAPSED=0
+          INTERVAL=5     # Check every 5 seconds
+          
+          while [ $ELAPSED -lt $MAX_WAIT ]; do
+            BUILD_INFO=$(curl -s -u "$JENKINS_USER:$JENKINS_TOKEN" \
+              -H "ngrok-skip-browser-warning: true" \
+              "$JENKINS_URL/job/$JENKINS_JOB/lastBuild/api/json" 2>/dev/null || echo "")
+            
+            if [ -z "$BUILD_INFO" ] || echo "$BUILD_INFO" | grep -q "404\|Not Found"; then
+              echo "[${ELAPSED}s] Waiting for build to appear..."
+              sleep $INTERVAL
+              ELAPSED=$((ELAPSED + INTERVAL))
+              continue
+            fi
+            
+            # Extract build status from JSON
+            BUILDING=$(echo "$BUILD_INFO" | grep -o '"building":[^,}]*' | cut -d: -f2 | tr -d ' "' || echo "true")
+            RESULT=$(echo "$BUILD_INFO" | grep -o '"result":"[^"]*"' | cut -d'"' -f4 || echo "null")
+            BUILD_NUMBER=$(echo "$BUILD_INFO" | grep -o '"number":[^,}]*' | cut -d: -f2 | tr -d ' "' || echo "unknown")
+            
+            if [ "$BUILD_NUMBER" != "unknown" ]; then
+              STATUS_MSG="Building: $BUILDING"
+              if [ "$RESULT" != "null" ]; then
+                STATUS_MSG="$STATUS_MSG, Result: $RESULT"
+              fi
+              echo "[${ELAPSED}s] Build #$BUILD_NUMBER - $STATUS_MSG"
+            fi
+            
+            if [ "$BUILDING" = "false" ]; then
+              echo ""
+              if [ "$RESULT" = "SUCCESS" ]; then
+                echo "✓ Jenkins build completed successfully!"
+                echo "Build URL: $JENKINS_URL/job/$JENKINS_JOB/$BUILD_NUMBER"
+                exit 0
+              elif [ "$RESULT" = "FAILURE" ] || [ "$RESULT" = "ABORTED" ] || [ "$RESULT" = "UNSTABLE" ]; then
+                echo "✗ Jenkins build failed with result: $RESULT"
+                echo "Build URL: $JENKINS_URL/job/$JENKINS_JOB/$BUILD_NUMBER"
+                exit 1
+              else
+                echo "⚠ Jenkins build completed with unknown result: $RESULT"
+                exit 1
+              fi
+            fi
+            
+            sleep $INTERVAL
+            ELAPSED=$((ELAPSED + INTERVAL))
+          done
+          
+          echo "✗ Timeout waiting for build to complete (waited ${MAX_WAIT}s)"
+          exit 1
 
