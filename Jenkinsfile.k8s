@@ -15,24 +15,6 @@ pipeline {
     string(name: 'IMAGE_TAG', defaultValue: 'v2', description: 'Docker image tag')
   }
 
-  // Jenkins tự động phát hiện thay đổi từ GitHub và trigger build
-  // QUAN TRỌNG: Khi dùng "Pipeline script from SCM", cần cấu hình Build Triggers trong Jenkins UI:
-  // 
-  // CÁCH 1 (Khuyến nghị - Real-time): GitHub Webhook
-  //   1. Job -> Configure -> Build Triggers -> GitHub hook trigger for GITScm polling (✓)
-  //   2. Trong GitHub: Settings -> Webhooks -> Add webhook
-  //      - Payload URL: http://your-jenkins-url/github-webhook/
-  //      - Events: Just the push event
-  //
-  // CÁCH 2 (Polling định kỳ): Poll SCM trong UI
-  //   1. Job -> Configure -> Build Triggers -> Poll SCM (✓)
-  //   2. Schedule: H/1 * * * *  (mỗi 1 phút)
-  //
-  // LƯU Ý: pollSCM trong Jenkinsfile chỉ hoạt động sau khi pipeline được load và approve lần đầu
-  // Nên tốt nhất là cấu hình trong Jenkins UI như hướng dẫn trên
-  triggers {
-    pollSCM('H/2 * * * *') // Poll mỗi 2 phút - sẽ hoạt động sau khi pipeline được approve
-  }
 
   options {
     disableConcurrentBuilds(abortPrevious: true)
@@ -55,23 +37,7 @@ pipeline {
             echo "Git commit message: \$(git log -1 --pretty=format:'%s' || echo 'no commits')"
             echo "Git author: \$(git log -1 --pretty=format:'%an <%ae>' || echo 'unknown')"
             echo ""
-            echo "=== Build Trigger Info ==="
             echo "Build triggered by: ${env.BUILD_CAUSE ?: 'unknown'}"
-            echo "Build number: ${env.BUILD_NUMBER ?: 'unknown'}"
-          """
-          
-          // Kiểm tra xem build được trigger như thế nào
-          if (env.BUILD_CAUSE?.contains('SCMTrigger')) {
-            echo "✓ Build triggered by SCM polling - pollSCM is working!"
-          } else if (env.BUILD_CAUSE?.contains('GitHubHook')) {
-            echo "✓ Build triggered by GitHub webhook - webhook is working!"
-          } else {
-            echo "⚠ Build triggered manually or by other cause: ${env.BUILD_CAUSE}"
-            echo "⚠ To enable auto-trigger on push:"
-            echo "   1. Go to Job -> Configure -> Build Triggers"
-            echo "   2. Enable 'Poll SCM' with schedule: H/1 * * * *"
-            echo "   OR enable 'GitHub hook trigger for GITScm polling'"
-          }
         }
       }
     }
