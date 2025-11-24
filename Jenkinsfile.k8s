@@ -31,7 +31,7 @@ pipeline {
   // LƯU Ý: pollSCM trong Jenkinsfile chỉ hoạt động sau khi pipeline được load và approve lần đầu
   // Nên tốt nhất là cấu hình trong Jenkins UI như hướng dẫn trên
   triggers {
-    pollSCM('H/1 * * * *') // Poll mỗi 1 phút - sẽ hoạt động sau khi pipeline được approve
+    pollSCM('H/2 * * * *') // Poll mỗi 2 phút - sẽ hoạt động sau khi pipeline được approve
   }
 
   options {
