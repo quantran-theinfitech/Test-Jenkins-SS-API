@@ -91,10 +91,15 @@ jobs:
           echo "Waiting for build to start..."
           sleep 3
           
-          # Poll build status until complete
+          # Poll build status and stream console output
           MAX_WAIT=1800  # 30 minutes max
           ELAPSED=0
-          INTERVAL=5     # Check every 5 seconds
+          INTERVAL=2     # Check every 2 seconds for real-time updates
+          LAST_OFFSET=0
+          BUILD_NUMBER=""
+          
+          echo "=== Jenkins Build Console Output ==="
+          echo ""
           
           while [ $ELAPSED -lt $MAX_WAIT ]; do
             BUILD_INFO=$(curl -s -u "$JENKINS_USER:$JENKINS_TOKEN" \
@@ -102,27 +107,54 @@ jobs:
               "$JENKINS_URL/job/$JENKINS_JOB/lastBuild/api/json" 2>/dev/null || echo "")
             
             if [ -z "$BUILD_INFO" ] || echo "$BUILD_INFO" | grep -q "404\|Not Found"; then
-              echo "[${ELAPSED}s] Waiting for build to appear..."
               sleep $INTERVAL
               ELAPSED=$((ELAPSED + INTERVAL))
               continue
             fi
             
-            # Extract build status from JSON
+            # Extract build number and status
+            BUILD_NUMBER=$(echo "$BUILD_INFO" | grep -o '"number":[^,}]*' | cut -d: -f2 | tr -d ' "' || echo "")
             BUILDING=$(echo "$BUILD_INFO" | grep -o '"building":[^,}]*' | cut -d: -f2 | tr -d ' "' || echo "true")
             RESULT=$(echo "$BUILD_INFO" | grep -o '"result":"[^"]*"' | cut -d'"' -f4 || echo "null")
-            BUILD_NUMBER=$(echo "$BUILD_INFO" | grep -o '"number":[^,}]*' | cut -d: -f2 | tr -d ' "' || echo "unknown")
             
-            if [ "$BUILD_NUMBER" != "unknown" ]; then
-              STATUS_MSG="Building: $BUILDING"
-              if [ "$RESULT" != "null" ]; then
-                STATUS_MSG="$STATUS_MSG, Result: $RESULT"
-              fi
-              echo "[${ELAPSED}s] Build #$BUILD_NUMBER - $STATUS_MSG"
+            if [ -z "$BUILD_NUMBER" ] || [ "$BUILD_NUMBER" = "unknown" ]; then
+              sleep $INTERVAL
+              ELAPSED=$((ELAPSED + INTERVAL))
+              continue
             fi
             
+            # Get progressive console output (real-time)
+            CONSOLE_OUTPUT=$(curl -s -u "$JENKINS_USER:$JENKINS_TOKEN" \
+              -H "ngrok-skip-browser-warning: true" \
+              "$JENKINS_URL/job/$JENKINS_JOB/$BUILD_NUMBER/logText/progressiveText?start=$LAST_OFFSET" 2>/dev/null || echo "")
+            
+            if [ -n "$CONSOLE_OUTPUT" ]; then
+              # Extract new content and update offset
+              NEW_CONTENT=$(echo "$CONSOLE_OUTPUT" | head -n -1)
+              NEW_OFFSET=$(echo "$CONSOLE_OUTPUT" | tail -n 1 | grep -oE '[0-9]+' || echo "$LAST_OFFSET")
+              
+              if [ -n "$NEW_CONTENT" ] && [ "$NEW_OFFSET" != "$LAST_OFFSET" ]; then
+                echo -n "$NEW_CONTENT"
+                LAST_OFFSET=$NEW_OFFSET
+              fi
+            fi
+            
+            # Check if build is complete
             if [ "$BUILDING" = "false" ]; then
+              # Get remaining console output
+              FINAL_OUTPUT=$(curl -s -u "$JENKINS_USER:$JENKINS_TOKEN" \
+                -H "ngrok-skip-browser-warning: true" \
+                "$JENKINS_URL/job/$JENKINS_JOB/$BUILD_NUMBER/logText/progressiveText?start=$LAST_OFFSET" 2>/dev/null || echo "")
+              
+              if [ -n "$FINAL_OUTPUT" ]; then
+                NEW_CONTENT=$(echo "$FINAL_OUTPUT" | head -n -1)
+                if [ -n "$NEW_CONTENT" ]; then
+                  echo "$NEW_CONTENT"
+                fi
+              fi
+              
               echo ""
+              echo "=== Build Result ==="
               if [ "$RESULT" = "SUCCESS" ]; then
                 echo "✓ Jenkins build completed successfully!"
                 echo "Build URL: $JENKINS_URL/job/$JENKINS_JOB/$BUILD_NUMBER"
@@ -141,6 +173,7 @@ jobs:
             ELAPSED=$((ELAPSED + INTERVAL))
           done
           
+          echo ""
           echo "✗ Timeout waiting for build to complete (waited ${MAX_WAIT}s)"
           exit 1
 
