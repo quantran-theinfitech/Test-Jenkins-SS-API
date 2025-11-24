@@ -1,0 +1,40 @@
+name: Deploy Dev v2
+
+on:
+  workflow_dispatch:
+
+jobs:
+  trigger-jenkins:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Jenkins Build
+        env:
+          JENKINS_URL: ${{ secrets.JENKINS_URL }}
+          JENKINS_JOB: ${{ secrets.JENKINS_JOB_NAME || 'ss-api-test' }}
+          JENKINS_USER: ${{ secrets.JENKINS_USER }}
+          JENKINS_TOKEN: ${{ secrets.JENKINS_TOKEN }}
+        run: |
+          if [ -z "$JENKINS_URL" ] || [ -z "$JENKINS_TOKEN" ]; then
+            echo "Error: JENKINS_URL and JENKINS_TOKEN must be set in repository secrets"
+            exit 1
+          fi
+          
+          echo "Triggering Jenkins job: $JENKINS_JOB at $JENKINS_URL"
+          
+          # Get CSRF token if required
+          CRUMB=$(curl -s -u "$JENKINS_USER:$JENKINS_TOKEN" "$JENKINS_URL/crumbIssuer/api/xml?xpath=concat(//crumbRequestField,\":\",//crumb)" || echo "")
+          
+          if [ -n "$CRUMB" ]; then
+            curl -X POST \
+              -u "$JENKINS_USER:$JENKINS_TOKEN" \
+              -H "$CRUMB" \
+              "$JENKINS_URL/job/$JENKINS_JOB/build"
+          else
+            curl -X POST \
+              -u "$JENKINS_USER:$JENKINS_TOKEN" \
+              "$JENKINS_URL/job/$JENKINS_JOB/build"
+          fi
+          
+          echo "✓ Jenkins build triggered successfully!"
+          echo "Check Jenkins at: $JENKINS_URL/job/$JENKINS_JOB"
+
