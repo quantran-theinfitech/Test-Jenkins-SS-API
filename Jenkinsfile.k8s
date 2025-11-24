@@ -1,0 +1,176 @@
+pipeline {
+  agent any
+
+  parameters {
+    string(name: 'API_IMAGE_NAME', defaultValue: 'salesbox-api', description: 'API image name')
+    string(name: 'IMAGE_TAG', defaultValue: 'v2', description: 'Docker image tag')
+  }
+
+  // Jenkins tự động kiểm tra repository mỗi 1 phút để phát hiện commit mới
+  // Không cần cấu hình webhook - Jenkins sẽ tự động trigger khi có thay đổi
+  triggers {
+    pollSCM('* * * * *') // Poll every minute to detect new commits
+  }
+
+  options {
+    disableConcurrentBuilds(abortPrevious: true)
+  }
+
+  stages {
+    stage('Checkout') {
+      steps {
+        script {
+          def repoUrl = 'https://github.com/quantran-theinfitech/Test-Jenkins-SS-API.git'
+          def branch = 'dev_v2'
+          def targetDir = '/home/theinfitech/Code/SS_Server/salesbox-api'
+          
+          // Jenkins sẽ tự động checkout và track changes
+          dir(targetDir) {
+            sh """
+              #!/bin/bash
+              set -e
+              
+              # Check if directory exists and is a git repo
+              if [ -d .git ]; then
+                echo "Git repository found, updating from branch ${branch}..."
+                git fetch origin || true
+                git checkout ${branch} || git checkout -b ${branch} || true
+                git pull origin ${branch} || echo "Pull failed, continuing with existing code"
+              else
+                echo "Cloning repository ${repoUrl} branch ${branch}..."
+                # Remove directory if it exists but is not a git repo
+                cd ..
+                rm -rf salesbox-api || true
+                git clone -b ${branch} ${repoUrl} salesbox-api || {
+                  echo "Clone with branch failed, trying without branch specification"
+                  git clone ${repoUrl} salesbox-api
+                  cd salesbox-api
+                  git checkout ${branch} || true
+                }
+              fi
+              
+              # Verify we're on the correct branch and show latest commit
+              cd ${targetDir}
+              echo "Current branch: $(git branch --show-current || echo 'unknown')"
+              echo "Latest commit: $(git log -1 --oneline || echo 'no commits')"
+            """
+          }
+        }
+      }
+    }
+
+    stage('Build') {
+      steps {
+        script {
+          def targetDir = '/home/theinfitech/Code/SS_Server/salesbox-api'
+          def imageName = params.API_IMAGE_NAME
+          def imageTag = params.IMAGE_TAG
+          
+          dir(targetDir) {
+            sh """
+              #!/bin/bash
+              set -e
+              
+              # Install Docker CLI if not available
+              if ! command -v docker &> /dev/null; then
+                echo "Installing Docker CLI..."
+                apt-get update -qq
+                apt-get install -y -qq docker.io || {
+                  curl -fsSL https://get.docker.com -o get-docker.sh
+                  sh get-docker.sh || echo "Docker installation failed"
+                }
+              fi
+              
+              # Verify Docker access
+              docker --version || echo "Docker not available"
+              
+              # Use Docker from host via socket (already mounted)
+              # Create buildx builder if needed
+              docker buildx create --name local-builder --use --driver docker-container 2>/dev/null || \
+              docker buildx use local-builder 2>/dev/null || \
+              docker buildx create --name local-builder --use --driver docker 2>/dev/null || true
+              
+              # Build image with tag v2 to match docker-compose.yml
+              echo "Building image ${imageName}:${imageTag}..."
+              docker buildx build -f docker/app/Dockerfile -t ${imageName}:${imageTag} --load .
+              
+              # Verify image was built
+              docker images | grep ${imageName} | grep ${imageTag} || echo "Warning: Image not found after build"
+            """
+          }
+        }
+      }
+    }
+
+    stage('Test Image') {
+      steps {
+        script {
+          def imageName = params.API_IMAGE_NAME
+          def imageTag = params.IMAGE_TAG
+          sh """
+            echo "Verifying image: ${imageName}:${imageTag}"
+            docker images | grep ${imageName} | grep ${imageTag} || {
+              echo "Error: Image ${imageName}:${imageTag} not found"
+              exit 1
+            }
+            echo "Image verified successfully"
+          """
+        }
+      }
+    }
+
+    stage('Deploy') {
+      steps {
+        script {
+          def targetDir = '/home/theinfitech/Code/SS_Server/salesbox-api'
+          def deployScript = "${targetDir}/deploy.sh"
+          
+          dir(targetDir) {
+            sh """
+              #!/bin/bash
+              set -e
+              
+              # Check if deploy.sh exists
+              if [ ! -f ${deployScript} ]; then
+                echo "deploy.sh not found, creating it..."
+                cat > ${deployScript} << 'EOF'
+#!/bin/bash
+set -e
+echo "Running docker compose pull..."
+docker compose pull
+echo "Running docker compose up -d..."
+docker compose up -d
+echo "Deployment completed"
+EOF
+                chmod +x ${deployScript}
+              fi
+              
+              # Verify docker-compose.yml exists
+              if [ ! -f docker-compose.yml ]; then
+                echo "Error: docker-compose.yml not found in ${targetDir}"
+                exit 1
+              fi
+              
+              # Run deploy script
+              echo "Executing deploy script: ${deployScript}"
+              bash ${deployScript}
+            """
+          }
+        }
+      }
+    }
+
+  }
+
+  post {
+    always {
+      echo "Build completed"
+    }
+    success {
+      echo "Build succeeded!"
+    }
+    failure {
+      echo "Build failed!"
+    }
+  }
+}
