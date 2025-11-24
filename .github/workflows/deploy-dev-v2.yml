@@ -87,9 +87,9 @@ jobs:
           
           echo "✓ Jenkins build triggered successfully! (HTTP $HTTP_CODE_ONLY)"
           
-          # Get build number from Location header or lastBuild
+          # Wait for build to start and get build number
           echo "Waiting for build to start..."
-          sleep 3
+          sleep 5
           
           # Poll build status and stream console output
           MAX_WAIT=1800  # 30 minutes max
@@ -97,6 +97,7 @@ jobs:
           INTERVAL=2     # Check every 2 seconds for real-time updates
           LAST_OFFSET=0
           BUILD_NUMBER=""
+          FIRST_BUILD_NUMBER=""
           
           echo "=== Jenkins Build Console Output ==="
           echo ""
@@ -106,16 +107,32 @@ jobs:
               -H "ngrok-skip-browser-warning: true" \
               "$JENKINS_URL/job/$JENKINS_JOB/lastBuild/api/json" 2>/dev/null || echo "")
             
-            if [ -z "$BUILD_INFO" ] || echo "$BUILD_INFO" | grep -q "404\|Not Found"; then
-              sleep $INTERVAL
-              ELAPSED=$((ELAPSED + INTERVAL))
-              continue
+            if [ -z "$BUILD_INFO" ] || echo "$BUILD_INFO" | grep -q "404\|Not Found\|<html"; then
+              if [ $ELAPSED -lt 10 ]; then
+                sleep $INTERVAL
+                ELAPSED=$((ELAPSED + INTERVAL))
+                continue
+              else
+                echo "Error: Could not get build info"
+                exit 1
+              fi
             fi
             
-            # Extract build number and status
-            BUILD_NUMBER=$(echo "$BUILD_INFO" | grep -o '"number":[^,}]*' | cut -d: -f2 | tr -d ' "' || echo "")
-            BUILDING=$(echo "$BUILD_INFO" | grep -o '"building":[^,}]*' | cut -d: -f2 | tr -d ' "' || echo "true")
-            RESULT=$(echo "$BUILD_INFO" | grep -o '"result":"[^"]*"' | cut -d'"' -f4 || echo "null")
+            # Extract build number and status - use sed for more reliable parsing
+            BUILD_NUMBER=$(echo "$BUILD_INFO" | sed -n 's/.*"number":\([0-9]*\).*/\1/p' | head -1)
+            BUILDING=$(echo "$BUILD_INFO" | sed -n 's/.*"building":\([^,}]*\).*/\1/p' | head -1 | tr -d ' "')
+            RESULT=$(echo "$BUILD_INFO" | sed -n 's/.*"result":"\([^"]*\)".*/\1/p' | head -1)
+            
+            # Set first build number if not set
+            if [ -z "$FIRST_BUILD_NUMBER" ] && [ -n "$BUILD_NUMBER" ]; then
+              FIRST_BUILD_NUMBER="$BUILD_NUMBER"
+              echo "Tracking build #$BUILD_NUMBER"
+            fi
+            
+            # Use first build number to ensure we're tracking the correct build
+            if [ -n "$FIRST_BUILD_NUMBER" ]; then
+              BUILD_NUMBER="$FIRST_BUILD_NUMBER"
+            fi
             
             if [ -z "$BUILD_NUMBER" ] || [ "$BUILD_NUMBER" = "unknown" ]; then
               sleep $INTERVAL
@@ -124,32 +141,45 @@ jobs:
             fi
             
             # Get progressive console output (real-time)
-            CONSOLE_OUTPUT=$(curl -s -u "$JENKINS_USER:$JENKINS_TOKEN" \
+            CONSOLE_RESPONSE=$(curl -s -u "$JENKINS_USER:$JENKINS_TOKEN" \
               -H "ngrok-skip-browser-warning: true" \
               "$JENKINS_URL/job/$JENKINS_JOB/$BUILD_NUMBER/logText/progressiveText?start=$LAST_OFFSET" 2>/dev/null || echo "")
             
-            if [ -n "$CONSOLE_OUTPUT" ]; then
-              # Extract new content and update offset
-              NEW_CONTENT=$(echo "$CONSOLE_OUTPUT" | head -n -1)
-              NEW_OFFSET=$(echo "$CONSOLE_OUTPUT" | tail -n 1 | grep -oE '[0-9]+' || echo "$LAST_OFFSET")
+            if [ -n "$CONSOLE_RESPONSE" ] && ! echo "$CONSOLE_RESPONSE" | grep -q "<html\|404"; then
+              # progressiveText returns: content\noffset
+              # Extract content (all but last line) and offset (last line)
+              LINE_COUNT=$(echo "$CONSOLE_RESPONSE" | wc -l)
+              if [ "$LINE_COUNT" -gt 1 ]; then
+                NEW_CONTENT=$(echo "$CONSOLE_RESPONSE" | head -n -1)
+                NEW_OFFSET=$(echo "$CONSOLE_RESPONSE" | tail -n 1 | grep -oE '^[0-9]+$' || echo "")
+              else
+                NEW_CONTENT=""
+                NEW_OFFSET=$(echo "$CONSOLE_RESPONSE" | grep -oE '^[0-9]+$' || echo "")
+              fi
               
-              if [ -n "$NEW_CONTENT" ] && [ "$NEW_OFFSET" != "$LAST_OFFSET" ]; then
+              if [ -n "$NEW_CONTENT" ]; then
                 echo -n "$NEW_CONTENT"
+              fi
+              
+              if [ -n "$NEW_OFFSET" ] && [ "$NEW_OFFSET" != "$LAST_OFFSET" ]; then
                 LAST_OFFSET=$NEW_OFFSET
               fi
             fi
             
             # Check if build is complete
-            if [ "$BUILDING" = "false" ]; then
+            if [ "$BUILDING" = "false" ] && [ -n "$RESULT" ] && [ "$RESULT" != "null" ]; then
               # Get remaining console output
-              FINAL_OUTPUT=$(curl -s -u "$JENKINS_USER:$JENKINS_TOKEN" \
+              FINAL_RESPONSE=$(curl -s -u "$JENKINS_USER:$JENKINS_TOKEN" \
                 -H "ngrok-skip-browser-warning: true" \
                 "$JENKINS_URL/job/$JENKINS_JOB/$BUILD_NUMBER/logText/progressiveText?start=$LAST_OFFSET" 2>/dev/null || echo "")
               
-              if [ -n "$FINAL_OUTPUT" ]; then
-                NEW_CONTENT=$(echo "$FINAL_OUTPUT" | head -n -1)
-                if [ -n "$NEW_CONTENT" ]; then
-                  echo "$NEW_CONTENT"
+              if [ -n "$FINAL_RESPONSE" ] && ! echo "$FINAL_RESPONSE" | grep -q "<html\|404"; then
+                LINE_COUNT=$(echo "$FINAL_RESPONSE" | wc -l)
+                if [ "$LINE_COUNT" -gt 1 ]; then
+                  FINAL_CONTENT=$(echo "$FINAL_RESPONSE" | head -n -1)
+                  if [ -n "$FINAL_CONTENT" ]; then
+                    echo "$FINAL_CONTENT"
+                  fi
                 fi
               fi
               
