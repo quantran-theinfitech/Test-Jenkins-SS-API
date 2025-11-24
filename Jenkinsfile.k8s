@@ -1,4 +1,18 @@
 pipeline {
+  // Cấu hình trong Jenkins UI:
+  // 1. Pipeline -> Definition: "Pipeline script from SCM"
+  // 2. SCM: Git
+  // 3. Repository URL: https://github.com/quantran-theinfitech/Test-Jenkins-SS-API.git
+  // 4. Branch: */dev_v2
+  // 5. Script Path: Jenkinsfile.k8s
+  // 6. Enable "Build Triggers" -> "GitHub hook trigger for GITScm polling" (hoặc dùng pollSCM)
+  //
+  // CẤU HÌNH BIẾN MÔI TRƯỜNG GITHUB_PAT:
+  // Jenkins -> Manage Jenkins -> Configure System -> Global properties -> Environment variables
+  // Thêm biến: GITHUB_PAT =
+  // Hoặc trong Job: Configure -> Build Environment -> Use secret text(s) or file(s)
+  //   -> Bindings -> Add -> Secret text -> Variable: GITHUB_PAT
+  
   agent any
 
   parameters {
@@ -6,10 +20,10 @@ pipeline {
     string(name: 'IMAGE_TAG', defaultValue: 'v2', description: 'Docker image tag')
   }
 
-  // Jenkins tự động kiểm tra repository mỗi 1 phút để phát hiện commit mới
-  // Không cần cấu hình webhook - Jenkins sẽ tự động trigger khi có thay đổi
+  // Jenkins tự động phát hiện thay đổi từ GitHub và trigger build
+  // Có thể dùng webhook (real-time) hoặc pollSCM (định kỳ)
   triggers {
-    pollSCM('* * * * *') // Poll every minute to detect new commits
+    pollSCM('H/1 * * * *') // Poll mỗi 1 phút, hoặc cấu hình webhook trong GitHub
   }
 
   options {
@@ -20,41 +34,57 @@ pipeline {
     stage('Checkout') {
       steps {
         script {
-          def repoUrl = 'https://github.com/quantran-theinfitech/Test-Jenkins-SS-API.git'
+          // URL với Personal Access Token từ biến môi trường Jenkins
+          // Cấu hình biến môi trường GITHUB_PAT trong Jenkins UI
+          def githubPat = env.GITHUB_PAT ?: ''
+          def repoBase = 'github.com/quantran-theinfitech/Test-Jenkins-SS-API.git'
+          def repoUrl = githubPat ? "https://${githubPat}@${repoBase}" : "https://${repoBase}"
           def branch = 'dev_v2'
-          def targetDir = '/home/theinfitech/Code/SS_Server/salesbox-api'
           
-          // Jenkins sẽ tự động checkout và track changes
-          dir(targetDir) {
+          if (!githubPat) {
+            echo "WARNING: GITHUB_PAT environment variable not set. Using public repository access."
+          }
+          
+          // Thử dùng checkout scm nếu có (khi dùng "Pipeline script from SCM")
+          // Nếu không có thì checkout thủ công
+          try {
+            checkout scm
+            echo "Using SCM checkout (Pipeline script from SCM)"
+          } catch (Exception e) {
+            echo "SCM checkout not available, using manual git checkout"
+            // Checkout thủ công bằng git commands
             sh """
               #!/bin/bash
               set -e
               
-              # Check if directory exists and is a git repo
+              # Kiểm tra xem đã có git repo chưa
               if [ -d .git ]; then
-                echo "Git repository found, updating from branch ${branch}..."
+                echo "Git repository found, updating..."
                 git fetch origin || true
                 git checkout ${branch} || git checkout -b ${branch} || true
                 git pull origin ${branch} || echo "Pull failed, continuing with existing code"
               else
                 echo "Cloning repository ${repoUrl} branch ${branch}..."
-                # Remove directory if it exists but is not a git repo
-                cd ..
-                rm -rf salesbox-api || true
-                git clone -b ${branch} ${repoUrl} salesbox-api || {
+                git clone -b ${branch} ${repoUrl} . || {
                   echo "Clone with branch failed, trying without branch specification"
-                  git clone ${repoUrl} salesbox-api
-                  cd salesbox-api
+                  git clone ${repoUrl} .
                   git checkout ${branch} || true
                 }
               fi
-              
-              # Verify we're on the correct branch and show latest commit
-              cd ${targetDir}
-              echo "Current branch: $(git branch --show-current || echo 'unknown')"
-              echo "Latest commit: $(git log -1 --oneline || echo 'no commits')"
             """
           }
+          
+          // Lấy thông tin từ Git trực tiếp
+          sh """
+            echo "=== Git Information ==="
+            echo "Current directory: \$(pwd)"
+            echo "Workspace: ${env.WORKSPACE}"
+            echo "Git remote URL: \$(git config --get remote.origin.url || echo 'not found')"
+            echo "Git branch: \$(git branch --show-current || git rev-parse --abbrev-ref HEAD || echo 'unknown')"
+            echo "Git commit: \$(git rev-parse HEAD || echo 'unknown')"
+            echo "Git commit message: \$(git log -1 --pretty=format:'%s' || echo 'no commits')"
+            echo "Git author: \$(git log -1 --pretty=format:'%an <%ae>' || echo 'unknown')"
+          """
         }
       }
     }
@@ -62,11 +92,11 @@ pipeline {
     stage('Build') {
       steps {
         script {
-          def targetDir = '/home/theinfitech/Code/SS_Server/salesbox-api'
+          // Build từ workspace của Jenkins (code đã được checkout từ GitHub)
           def imageName = params.API_IMAGE_NAME
           def imageTag = params.IMAGE_TAG
           
-          dir(targetDir) {
+          dir(env.WORKSPACE) {
             sh """
               #!/bin/bash
               set -e
@@ -91,8 +121,9 @@ pipeline {
               docker buildx create --name local-builder --use --driver docker 2>/dev/null || true
               
               # Build image with tag v2 to match docker-compose.yml
-              echo "Building image ${imageName}:${imageTag}..."
-              docker buildx build -f docker/app/Dockerfile -t ${imageName}:${imageTag} --load .
+              # Build với target 'development' để khớp với docker-compose.yml
+              echo "Building image ${imageName}:${imageTag} with target 'development'..."
+              docker buildx build -f docker/app/Dockerfile --target development -t ${imageName}:${imageTag} --load .
               
               # Verify image was built
               docker images | grep ${imageName} | grep ${imageTag} || echo "Warning: Image not found after build"
@@ -122,15 +153,21 @@ pipeline {
     stage('Deploy') {
       steps {
         script {
+          // Deploy vào thư mục thực tế trên server
           def targetDir = '/home/theinfitech/Code/SS_Server/salesbox-api'
           def deployScript = "${targetDir}/deploy.sh"
+          
+          // Đảm bảo thư mục tồn tại
+          sh """
+            mkdir -p ${targetDir} || true
+          """
           
           dir(targetDir) {
             sh """
               #!/bin/bash
               set -e
               
-              # Check if deploy.sh exists
+              # Check if deploy.sh exists, nếu không thì tạo
               if [ ! -f ${deployScript} ]; then
                 echo "deploy.sh not found, creating it..."
                 cat > ${deployScript} << 'EOF'
