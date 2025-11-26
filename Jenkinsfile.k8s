@@ -108,21 +108,16 @@ pipeline {
       steps {
         script {
           def targetDir = '/home/theinfitech/Code/SS_Server/salesbox-api'
-          
-          sh "mkdir -p ${targetDir} || true"
-          
-          dir(targetDir) {
-            sh """
-              set -ex
-              echo "Executing deploy.sh in \$(pwd)"
-              ./deploy.sh
-            """
-          }
+
+          sh """
+            set -ex
+            cd ${targetDir}
+            echo "Current directory: \$(pwd)"
+            ./deploy.sh
+          """
         }
       }
     }
-
-
   }
 
   post {
