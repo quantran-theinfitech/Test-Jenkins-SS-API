@@ -212,8 +212,18 @@ jobs:
               fi
               
               if [ -n "$NEW_CONTENT" ]; then
-                # Filter out verbose Jenkins pipeline markers to reduce log size
-                FILTERED_CONTENT=$(echo "$NEW_CONTENT" | grep -v "^\[Pipeline\]" | grep -v "^Running on" | grep -v "^Selected Git" || echo "$NEW_CONTENT")
+                # Filter out base64 encoded lines (ha:////...) and verbose Jenkins markers
+                FILTERED_CONTENT=$(echo "$NEW_CONTENT" | \
+                  grep -v "^ha:////" | \
+                  grep -v "^\[Pipeline\]" | \
+                  grep -v "^Running on" | \
+                  grep -v "^Selected Git" | \
+                  grep -v "^The recommended git" | \
+                  grep -v "^No credentials" | \
+                  grep -v "^ > git " | \
+                  grep -v "^Fetching changes" | \
+                  grep -v "^Checking out Revision" | \
+                  grep -v "^Commit message:" || echo "$NEW_CONTENT")
                 if [ -n "$FILTERED_CONTENT" ]; then
                   echo -n "$FILTERED_CONTENT"
                 fi
@@ -236,7 +246,15 @@ jobs:
                 if [ "$LINE_COUNT" -gt 1 ]; then
                   FINAL_CONTENT=$(echo "$FINAL_RESPONSE" | head -n -1)
                   if [ -n "$FINAL_CONTENT" ]; then
-                    echo "$FINAL_CONTENT"
+                    # Filter out base64 encoded lines and verbose markers
+                    FILTERED_FINAL=$(echo "$FINAL_CONTENT" | \
+                      grep -v "^ha:////" | \
+                      grep -v "^\[Pipeline\]" | \
+                      grep -v "^Running on" | \
+                      grep -v "^Selected Git" || echo "$FINAL_CONTENT")
+                    if [ -n "$FILTERED_FINAL" ]; then
+                      echo "$FILTERED_FINAL"
+                    fi
                   fi
                 fi
               fi
