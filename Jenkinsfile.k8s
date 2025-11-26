@@ -1,20 +1,10 @@
 pipeline {
-  // CẤU HÌNH TRONG JENKINS UI:
-  // 1. Pipeline -> Definition: "Pipeline script from SCM"
-  // 2. SCM: Git
-  // 3. Repository URL: 
-  //    (hoặc dùng credentials trong Jenkins thay vì hardcode PAT trong URL)
-  // 4. Branch Specifier: */dev_v2
-  // 5. Script Path: Jenkinsfile.k8s
-  // 6. Build Triggers: Enable "GitHub hook trigger for GITScm polling" (hoặc dùng pollSCM trong Jenkinsfile)
-  
   agent any
 
   parameters {
     string(name: 'API_IMAGE_NAME', defaultValue: 'salesbox-api', description: 'API image name')
     string(name: 'IMAGE_TAG', defaultValue: 'v2', description: 'Docker image tag')
   }
-
 
   options {
     disableConcurrentBuilds(abortPrevious: true)
@@ -23,20 +13,14 @@ pipeline {
   stages {
     stage('Checkout') {
       steps {
-        // Jenkins tự động checkout code từ GitHub (đã cấu hình trong UI với SCM)
         checkout scm
         script {
-          // Lấy thông tin từ Git trực tiếp
           sh """
             echo "=== Git Information ==="
-            echo "Current directory: \$(pwd)"
             echo "Workspace: ${env.WORKSPACE}"
-            echo "Git remote URL: \$(git config --get remote.origin.url || echo 'not found')"
             echo "Git branch: \$(git branch --show-current || git rev-parse --abbrev-ref HEAD || echo 'unknown')"
             echo "Git commit: \$(git rev-parse HEAD || echo 'unknown')"
             echo "Git commit message: \$(git log -1 --pretty=format:'%s' || echo 'no commits')"
-            echo "Git author: \$(git log -1 --pretty=format:'%an <%ae>' || echo 'unknown')"
-            echo ""
             echo "Build triggered by: ${env.BUILD_CAUSE ?: 'unknown'}"
           """
         }
@@ -46,40 +30,17 @@ pipeline {
     stage('Build') {
       steps {
         script {
-          // Build từ workspace của Jenkins (code đã được checkout từ GitHub)
           def imageName = params.API_IMAGE_NAME
           def imageTag = params.IMAGE_TAG
           
           dir(env.WORKSPACE) {
             sh """
-              #!/bin/bash
               set -e
-              
-              # Install Docker CLI if not available
-              if ! command -v docker &> /dev/null; then
-                echo "Installing Docker CLI..."
-                apt-get update -qq
-                apt-get install -y -qq docker.io || {
-                  curl -fsSL https://get.docker.com -o get-docker.sh
-                  sh get-docker.sh || echo "Docker installation failed"
-                }
-              fi
-              
-              # Verify Docker access
-              docker --version || echo "Docker not available"
-              
-              # Use Docker from host via socket (already mounted)
-              # Create buildx builder if needed
               docker buildx create --name local-builder --use --driver docker-container 2>/dev/null || \
               docker buildx use local-builder 2>/dev/null || \
               docker buildx create --name local-builder --use --driver docker 2>/dev/null || true
-              
-              # Build image with tag v2 to match docker-compose.yml
-              # Build với target 'development' để khớp với docker-compose.yml
               echo "Building image ${imageName}:${imageTag} with target 'development'..."
               docker buildx build -f docker/app/Dockerfile --target development -t ${imageName}:${imageTag} --load .
-              
-              # Verify image was built
               docker images | grep ${imageName} | grep ${imageTag} || echo "Warning: Image not found after build"
             """
           }
@@ -93,7 +54,6 @@ pipeline {
           def imageName = params.API_IMAGE_NAME
           def imageTag = params.IMAGE_TAG
           sh """
-            echo "Verifying image: ${imageName}:${imageTag}"
             docker images | grep ${imageName} | grep ${imageTag} || {
               echo "Error: Image ${imageName}:${imageTag} not found"
               exit 1
@@ -108,12 +68,14 @@ pipeline {
       steps {
         script {
           def targetDir = '/home/theinfitech/Code/SS_Server/salesbox-api'
-
           sh """
-            set -ex
-            cd ${targetDir}
-            echo "Current directory: \$(pwd)"
-            ./deploy.sh
+            set -e
+            docker run --rm \\
+              -v /var/run/docker.sock:/var/run/docker.sock \\
+              -v ${targetDir}:${targetDir} \\
+              -w ${targetDir} \\
+              docker:24-cli sh -c "apk add --no-cache docker-compose-plugin && docker compose pull && docker compose up -d"
+            echo "Deployment completed"
           """
         }
       }
