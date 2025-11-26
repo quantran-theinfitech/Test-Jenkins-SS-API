@@ -135,13 +135,7 @@ echo "Deployment completed"
 EOF
                 chmod +x ${deployScript}
               fi
-              
-              # Verify docker-compose.yml exists
-              if [ ! -f docker-compose.yml ]; then
-                echo "Error: docker-compose.yml not found in ${targetDir}"
-                exit 1
-              fi
-              
+
               # Run deploy script
               echo "Executing deploy script: ${deployScript}"
               bash ${deployScript}

@@ -1,0 +1,187 @@
+def containers = [
+  containerTemplate(name: 'docker', image: 'docker:23.0.6-cli', ttyEnabled: true)
+]
+
+
+pipeline {
+  parameters {
+    string(name: 'IMAGE_NAME', defaultValue: 'registry-helm-docker-registry.registry/salesnext-spark', description: 'Docker image name')
+    string(name: 'IMAGE_TAG', defaultValue: 'latest', description: 'Docker image tag')
+    string(name: 'IMAGE_DEV_TAG', defaultValue: 'dev', description: 'Docker image dev tag')
+    string(name: 'IMAGE_PROD_TAG', defaultValue: 'prod', description: 'Docker image prod tag')
+    string(name: 'IMAGE_API_V1_TAG', defaultValue: 'api_v1', description: 'Docker image tag for salessmart api v1')
+
+    string(name: 'EXECUTOR_IMAGE_NAME', defaultValue: 'registry-helm-docker-registry.registry/salesnext-spark-executor', description: 'Docker image name')
+    string(name: 'EXECUTOR_IMAGE_TAG', defaultValue: 'latest', description: 'Docker image tag')
+    string(name: 'EXECUTOR_IMAGE_DEV_TAG', defaultValue: 'dev', description: 'Docker image dev tag')
+    string(name: 'EXECUTOR_IMAGE_PROD_TAG', defaultValue: 'prod', description: 'Docker image prod tag')
+    string(name: 'EXECUTOR_IMAGE_API_V1_TAG', defaultValue: 'api_v1', description: 'Docker image tag for salessmart api v1')
+
+  }
+  agent {
+    kubernetes {
+      containerTemplates containers
+      yaml '''
+      spec:
+        containers:
+          - name: docker
+            volumeMounts:
+            - name: certs
+              readOnly: true
+              mountPath: "/.certs/client"
+            - name: config
+              readOnly: true
+              mountPath: "/etc/docker"
+        volumes:
+          - name: certs
+            secret:
+              secretName: buildkit-client-certs
+          - name: config
+            secret:
+              secretName: docker-config
+      '''
+    }
+  }
+  stages {
+    stage('Prepare') {
+      when {
+        anyOf {
+          branch 'k8s'
+          branch 'dev'
+          branch 'k8s_api_v1'
+          branch 'k8s-prod'
+        }
+      }
+      steps {
+        container('docker') {
+          sh "apk add git"
+          sh "docker buildx create --name k8s --use --driver remote --driver-opt cacert=/.certs/client/ca.pem,cert=/.certs/client/cert.pem,key=/.certs/client/key.pem tcp://buildkitd.buildkit.svc.cluster.local:1234"
+        }
+      }
+    }
+    stage('Build Dev') {
+      when {
+        branch 'dev'
+      }
+      parallel {
+        stage('Build salesnext-spark') {
+          when {
+            changeset 'salesnext_spark/**'
+          }
+          steps {
+            container('docker') {
+              sshagent(['salesbox-github-ssh']) {
+                sh "docker buildx build -t ${params.IMAGE_NAME}:${params.IMAGE_DEV_TAG} --push --provenance=false --ssh default=${env.SSH_AUTH_SOCK} ."
+              }
+            }
+          }
+        }
+        stage('Build salesnext-spark-executor') {
+          when {
+            changeset 'executor/**'
+          }
+          steps {
+            container('docker') {
+              sshagent(['salesbox-github-ssh']) {
+                sh "docker buildx build -t ${params.EXECUTOR_IMAGE_NAME}:${params.EXECUTOR_IMAGE_DEV_TAG} --push --provenance=false --ssh default=${env.SSH_AUTH_SOCK} -f executor/Dockerfile ."
+              }
+            }
+          }
+        }
+      }
+    }
+    stage('Build') {
+      when {
+        branch 'k8s'
+      }
+      parallel {
+        stage('Build salesnext-spark') {
+          when {
+            changeset 'salesnext_spark/**'
+          }
+          steps {
+            container('docker') {
+              sshagent(['salesbox-github-ssh']) {
+                sh "docker buildx build -t ${params.IMAGE_NAME}:${params.IMAGE_TAG} --push --provenance=false --ssh default=${env.SSH_AUTH_SOCK} ."
+              }
+            }
+          }
+        }
+        stage('Build salesnext-spark-executor') {
+          when {
+            changeset 'executor/**'
+          }
+          steps {
+            container('docker') {
+              sshagent(['salesbox-github-ssh']) {
+                sh "docker buildx build -t ${params.EXECUTOR_IMAGE_NAME}:${params.EXECUTOR_IMAGE_TAG} --push --provenance=false --ssh default=${env.SSH_AUTH_SOCK} -f executor/Dockerfile ."
+              }
+            }
+          }
+        }
+      }
+    }
+    stage('Build API V1') {
+      when {
+        branch 'k8s_api_v1'
+      }
+      parallel {
+        stage('Build salesnext-spark') {
+          when {
+            changeset 'salesnext_spark/**'
+          }
+          steps {
+            container('docker') {
+              sshagent(['salesbox-github-ssh']) {
+                sh "docker buildx build -t ${params.IMAGE_NAME}:${params.IMAGE_API_V1_TAG} --push --provenance=false --ssh default=${env.SSH_AUTH_SOCK} ."
+              }
+            }
+          }
+        }
+        stage('Build salesnext-spark-executor') {
+          when {
+            changeset 'executor/**'
+          }
+          steps {
+            container('docker') {
+              sshagent(['salesbox-github-ssh']) {
+                sh "docker buildx build -t ${params.EXECUTOR_IMAGE_NAME}:${params.EXECUTOR_IMAGE_API_V1_TAG} --push --provenance=false --ssh default=${env.SSH_AUTH_SOCK} -f executor/Dockerfile ."
+              }
+            }
+          }
+        }
+      }
+    }
+    stage('Build Prod') {
+      when {
+        branch 'k8s-prod'
+      }
+      parallel {
+        stage('Build salesnext-spark') {
+          when {
+            changeset 'salesnext_spark/**'
+          }
+          steps {
+            container('docker') {
+              sshagent(['salesbox-github-ssh']) {
+                sh "docker buildx build -t ${params.IMAGE_NAME}:${params.IMAGE_PROD_TAG} --push --provenance=false --ssh default=${env.SSH_AUTH_SOCK} ."
+              }
+            }
+          }
+        }
+        stage('Build salesnext-spark-executor') {
+          when {
+            changeset 'executor/**'
+          }
+          steps {
+            container('docker') {
+              sshagent(['salesbox-github-ssh']) {
+                sh "docker buildx build -t ${params.EXECUTOR_IMAGE_NAME}:${params.EXECUTOR_IMAGE_PROD_TAG} --push --provenance=false --ssh default=${env.SSH_AUTH_SOCK} -f executor/Dockerfile ."
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
