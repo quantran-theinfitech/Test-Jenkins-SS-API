@@ -14,7 +14,6 @@ jobs:
           JENKINS_USER: ${{ secrets.JENKINS_USER }}
           JENKINS_TOKEN: ${{ secrets.JENKINS_TOKEN }}
         run: |
-          set -x
           # Ensure output is not buffered
           export PYTHONUNBUFFERED=1
           
@@ -184,10 +183,10 @@ jobs:
               RESULT=$(echo "$BUILD_INFO" | sed -n 's/.*"result":"\([^"]*\)".*/\1/p' | head -1)
             fi
             
-            # Debug output every 10 seconds
-            if [ $((ELAPSED % 10)) -eq 0 ] && [ -n "$BUILD_NUMBER" ]; then
+            # Debug output every 30 seconds (reduced frequency)
+            if [ $((ELAPSED % 30)) -eq 0 ] && [ -n "$BUILD_NUMBER" ] && [ "$BUILDING" = "true" ]; then
               echo ""
-              echo "[${ELAPSED}s] Status check - Build #$BUILD_NUMBER, Building: $BUILDING, Result: '$RESULT'"
+              echo "[${ELAPSED}s] Build #$BUILD_NUMBER still running..."
             fi
             
             # Handle null result (build still running)
@@ -213,7 +212,11 @@ jobs:
               fi
               
               if [ -n "$NEW_CONTENT" ]; then
-                echo -n "$NEW_CONTENT"
+                # Filter out verbose Jenkins pipeline markers to reduce log size
+                FILTERED_CONTENT=$(echo "$NEW_CONTENT" | grep -v "^\[Pipeline\]" | grep -v "^Running on" | grep -v "^Selected Git" || echo "$NEW_CONTENT")
+                if [ -n "$FILTERED_CONTENT" ]; then
+                  echo -n "$FILTERED_CONTENT"
+                fi
               fi
               
               if [ -n "$NEW_OFFSET" ] && [ "$NEW_OFFSET" != "$LAST_OFFSET" ]; then
