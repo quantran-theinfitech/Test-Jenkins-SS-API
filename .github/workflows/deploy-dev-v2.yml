@@ -14,11 +14,16 @@ jobs:
           JENKINS_USER: ${{ secrets.JENKINS_USER }}
           JENKINS_TOKEN: ${{ secrets.JENKINS_TOKEN }}
         run: |
+          set -x
+          # Ensure output is not buffered
+          export PYTHONUNBUFFERED=1
+          
           if [ -z "$JENKINS_URL" ] || [ -z "$JENKINS_TOKEN" ]; then
             echo "Error: JENKINS_URL and JENKINS_TOKEN must be set in repository secrets"
             exit 1
           fi
           
+          echo "=== Starting Jenkins Build Trigger ==="
           echo "Triggering Jenkins job: $JENKINS_JOB at $JENKINS_URL"
           
           # Bypass ngrok warning page if needed
@@ -109,25 +114,33 @@ jobs:
             
             if [ -z "$BUILD_INFO" ] || echo "$BUILD_INFO" | grep -q "404\|Not Found\|<html"; then
               if [ $ELAPSED -lt 10 ]; then
+                echo "[${ELAPSED}s] Waiting for build to appear..."
                 sleep $INTERVAL
                 ELAPSED=$((ELAPSED + INTERVAL))
                 continue
               else
-                echo "Error: Could not get build info"
+                echo "Error: Could not get build info after ${ELAPSED}s"
+                echo "Response: ${BUILD_INFO:0:200}"
                 exit 1
               fi
             fi
             
             # Parse JSON using Python for reliability
             if command -v python3 &> /dev/null; then
-              BUILD_NUMBER=$(echo "$BUILD_INFO" | python3 -c "import sys, json; data = json.load(sys.stdin); print(data.get('number', ''))" 2>/dev/null || echo "")
-              BUILDING=$(echo "$BUILD_INFO" | python3 -c "import sys, json; data = json.load(sys.stdin); print(str(data.get('building', True)).lower())" 2>/dev/null || echo "true")
-              RESULT=$(echo "$BUILD_INFO" | python3 -c "import sys, json; data = json.load(sys.stdin); result = data.get('result'); print(result if result else '')" 2>/dev/null || echo "")
+              BUILD_NUMBER=$(echo "$BUILD_INFO" | python3 -c "import sys, json; data = json.load(sys.stdin); print(data.get('number', ''))" 2>&1 || echo "")
+              BUILDING=$(echo "$BUILD_INFO" | python3 -c "import sys, json; data = json.load(sys.stdin); print(str(data.get('building', True)).lower())" 2>&1 || echo "true")
+              RESULT=$(echo "$BUILD_INFO" | python3 -c "import sys, json; data = json.load(sys.stdin); result = data.get('result'); print(result if result else '')" 2>&1 || echo "")
             else
               # Fallback to sed parsing
               BUILD_NUMBER=$(echo "$BUILD_INFO" | sed -n 's/.*"number":\([0-9]*\).*/\1/p' | head -1)
               BUILDING=$(echo "$BUILD_INFO" | sed -n 's/.*"building":\([^,}]*\).*/\1/p' | head -1 | tr -d ' "')
               RESULT=$(echo "$BUILD_INFO" | sed -n 's/.*"result":"\([^"]*\)".*/\1/p' | head -1)
+            fi
+            
+            # Debug output every 10 seconds
+            if [ $((ELAPSED % 10)) -eq 0 ] && [ -n "$BUILD_NUMBER" ]; then
+              echo ""
+              echo "[${ELAPSED}s] Status check - Build #$BUILD_NUMBER, Building: $BUILDING, Result: '$RESULT'"
             fi
             
             # Handle null result (build still running)
@@ -138,7 +151,7 @@ jobs:
             # Set first build number if not set
             if [ -z "$FIRST_BUILD_NUMBER" ] && [ -n "$BUILD_NUMBER" ]; then
               FIRST_BUILD_NUMBER="$BUILD_NUMBER"
-              echo "Tracking build #$BUILD_NUMBER"
+              echo "[${ELAPSED}s] Found and tracking build #$BUILD_NUMBER"
             fi
             
             # Use first build number to ensure we're tracking the correct build
@@ -147,6 +160,9 @@ jobs:
             fi
             
             if [ -z "$BUILD_NUMBER" ] || [ "$BUILD_NUMBER" = "unknown" ]; then
+              if [ $((ELAPSED % 10)) -eq 0 ]; then
+                echo "[${ELAPSED}s] Still waiting for build number..."
+              fi
               sleep $INTERVAL
               ELAPSED=$((ELAPSED + INTERVAL))
               continue
