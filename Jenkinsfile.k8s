@@ -107,43 +107,21 @@ pipeline {
     stage('Deploy') {
       steps {
         script {
-          // Deploy vào thư mục thực tế trên server
           def targetDir = '/home/theinfitech/Code/SS_Server/salesbox-api'
-          def deployScript = "${targetDir}/deploy.sh"
           
-          // Đảm bảo thư mục tồn tại
-          sh """
-            mkdir -p ${targetDir} || true
-          """
+          sh "mkdir -p ${targetDir} || true"
           
           dir(targetDir) {
             sh """
-              #!/bin/bash
-              set -e
-              
-              # Check if deploy.sh exists, nếu không thì tạo
-              if [ ! -f ${deployScript} ]; then
-                echo "deploy.sh not found, creating it..."
-                cat > ${deployScript} << 'EOF'
-#!/bin/bash
-set -e
-echo "Running docker compose pull..."
-docker compose pull
-echo "Running docker compose up -d..."
-docker compose up -d
-echo "Deployment completed"
-EOF
-                chmod +x ${deployScript}
-              fi
-
-              # Run deploy script
-              echo "Executing deploy script: ${deployScript}"
-              bash ${deployScript}
+              set -ex
+              echo "Executing deploy.sh in \$(pwd)"
+              ./deploy.sh
             """
           }
         }
       }
     }
+
 
   }
 
