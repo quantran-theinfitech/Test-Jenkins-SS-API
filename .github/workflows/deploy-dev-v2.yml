@@ -92,37 +92,84 @@ jobs:
           
           echo "✓ Jenkins build triggered successfully! (HTTP $HTTP_CODE_ONLY)"
           
-          # Wait for build to start and get build number
-          echo "Waiting for build to start..."
-          sleep 5
+          # Get the last build number BEFORE triggering to identify the new build
+          echo "Getting last build number before trigger..."
+          PREV_BUILD_INFO=$(curl -s -u "$JENKINS_USER:$JENKINS_TOKEN" \
+            -H "ngrok-skip-browser-warning: true" \
+            "$JENKINS_URL/job/$JENKINS_JOB/lastBuild/api/json" 2>/dev/null || echo "")
           
-          # Poll build status and stream console output
+          if command -v python3 &> /dev/null; then
+            PREV_BUILD_NUMBER=$(echo "$PREV_BUILD_INFO" | python3 -c "import sys, json; data = json.load(sys.stdin); print(data.get('number', 0))" 2>/dev/null || echo "0")
+          else
+            PREV_BUILD_NUMBER=$(echo "$PREV_BUILD_INFO" | sed -n 's/.*"number":\([0-9]*\).*/\1/p' | head -1 || echo "0")
+          fi
+          
+          echo "Last build number before trigger: $PREV_BUILD_NUMBER"
+          echo "Waiting for new build to appear..."
+          
+          # Wait for new build to start
           MAX_WAIT=1800  # 30 minutes max
           ELAPSED=0
           INTERVAL=2     # Check every 2 seconds for real-time updates
           LAST_OFFSET=0
           BUILD_NUMBER=""
-          FIRST_BUILD_NUMBER=""
+          TARGET_BUILD_NUMBER=""
           
-          echo "=== Jenkins Build Console Output ==="
-          echo ""
-          
-          while [ $ELAPSED -lt $MAX_WAIT ]; do
+          # Wait for new build number to appear
+          while [ $ELAPSED -lt 60 ]; do
             BUILD_INFO=$(curl -s -u "$JENKINS_USER:$JENKINS_TOKEN" \
               -H "ngrok-skip-browser-warning: true" \
               "$JENKINS_URL/job/$JENKINS_JOB/lastBuild/api/json" 2>/dev/null || echo "")
             
             if [ -z "$BUILD_INFO" ] || echo "$BUILD_INFO" | grep -q "404\|Not Found\|<html"; then
-              if [ $ELAPSED -lt 10 ]; then
-                echo "[${ELAPSED}s] Waiting for build to appear..."
-                sleep $INTERVAL
-                ELAPSED=$((ELAPSED + INTERVAL))
-                continue
-              else
-                echo "Error: Could not get build info after ${ELAPSED}s"
-                echo "Response: ${BUILD_INFO:0:200}"
-                exit 1
-              fi
+              sleep $INTERVAL
+              ELAPSED=$((ELAPSED + INTERVAL))
+              continue
+            fi
+            
+            if command -v python3 &> /dev/null; then
+              CURRENT_BUILD_NUMBER=$(echo "$BUILD_INFO" | python3 -c "import sys, json; data = json.load(sys.stdin); print(data.get('number', 0))" 2>/dev/null || echo "0")
+            else
+              CURRENT_BUILD_NUMBER=$(echo "$BUILD_INFO" | sed -n 's/.*"number":\([0-9]*\).*/\1/p' | head -1 || echo "0")
+            fi
+            
+            # Check if new build appeared (number increased)
+            if [ -n "$CURRENT_BUILD_NUMBER" ] && [ "$CURRENT_BUILD_NUMBER" != "0" ] && [ "$CURRENT_BUILD_NUMBER" -gt "$PREV_BUILD_NUMBER" ]; then
+              TARGET_BUILD_NUMBER="$CURRENT_BUILD_NUMBER"
+              echo "Found new build #$TARGET_BUILD_NUMBER (was tracking #$PREV_BUILD_NUMBER)"
+              break
+            fi
+            
+            if [ $((ELAPSED % 4)) -eq 0 ]; then
+              echo "[${ELAPSED}s] Waiting for new build (current: #$CURRENT_BUILD_NUMBER, previous: #$PREV_BUILD_NUMBER)..."
+            fi
+            
+            sleep $INTERVAL
+            ELAPSED=$((ELAPSED + INTERVAL))
+          done
+          
+          if [ -z "$TARGET_BUILD_NUMBER" ]; then
+            echo "Error: Could not find new build after 60 seconds"
+            echo "Last build number: $PREV_BUILD_NUMBER"
+            exit 1
+          fi
+          
+          BUILD_NUMBER="$TARGET_BUILD_NUMBER"
+          echo "=== Jenkins Build Console Output (Build #$BUILD_NUMBER) ==="
+          echo ""
+          
+          # Reset elapsed time for actual build tracking
+          ELAPSED=0
+          
+          while [ $ELAPSED -lt $MAX_WAIT ]; do
+            BUILD_INFO=$(curl -s -u "$JENKINS_USER:$JENKINS_TOKEN" \
+              -H "ngrok-skip-browser-warning: true" \
+              "$JENKINS_URL/job/$JENKINS_JOB/$BUILD_NUMBER/api/json" 2>/dev/null || echo "")
+            
+            if [ -z "$BUILD_INFO" ] || echo "$BUILD_INFO" | grep -q "404\|Not Found\|<html"; then
+              echo "Error: Could not get build info for build #$BUILD_NUMBER"
+              echo "Response: ${BUILD_INFO:0:200}"
+              exit 1
             fi
             
             # Parse JSON using Python for reliability
@@ -146,26 +193,6 @@ jobs:
             # Handle null result (build still running)
             if [ "$RESULT" = "null" ] || [ -z "$RESULT" ]; then
               RESULT=""
-            fi
-            
-            # Set first build number if not set
-            if [ -z "$FIRST_BUILD_NUMBER" ] && [ -n "$BUILD_NUMBER" ]; then
-              FIRST_BUILD_NUMBER="$BUILD_NUMBER"
-              echo "[${ELAPSED}s] Found and tracking build #$BUILD_NUMBER"
-            fi
-            
-            # Use first build number to ensure we're tracking the correct build
-            if [ -n "$FIRST_BUILD_NUMBER" ]; then
-              BUILD_NUMBER="$FIRST_BUILD_NUMBER"
-            fi
-            
-            if [ -z "$BUILD_NUMBER" ] || [ "$BUILD_NUMBER" = "unknown" ]; then
-              if [ $((ELAPSED % 10)) -eq 0 ]; then
-                echo "[${ELAPSED}s] Still waiting for build number..."
-              fi
-              sleep $INTERVAL
-              ELAPSED=$((ELAPSED + INTERVAL))
-              continue
             fi
             
             # Get progressive console output (real-time)
