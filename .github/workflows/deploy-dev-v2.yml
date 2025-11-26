@@ -118,10 +118,22 @@ jobs:
               fi
             fi
             
-            # Extract build number and status - use sed for more reliable parsing
-            BUILD_NUMBER=$(echo "$BUILD_INFO" | sed -n 's/.*"number":\([0-9]*\).*/\1/p' | head -1)
-            BUILDING=$(echo "$BUILD_INFO" | sed -n 's/.*"building":\([^,}]*\).*/\1/p' | head -1 | tr -d ' "')
-            RESULT=$(echo "$BUILD_INFO" | sed -n 's/.*"result":"\([^"]*\)".*/\1/p' | head -1)
+            # Parse JSON using Python for reliability
+            if command -v python3 &> /dev/null; then
+              BUILD_NUMBER=$(echo "$BUILD_INFO" | python3 -c "import sys, json; data = json.load(sys.stdin); print(data.get('number', ''))" 2>/dev/null || echo "")
+              BUILDING=$(echo "$BUILD_INFO" | python3 -c "import sys, json; data = json.load(sys.stdin); print(str(data.get('building', True)).lower())" 2>/dev/null || echo "true")
+              RESULT=$(echo "$BUILD_INFO" | python3 -c "import sys, json; data = json.load(sys.stdin); result = data.get('result'); print(result if result else '')" 2>/dev/null || echo "")
+            else
+              # Fallback to sed parsing
+              BUILD_NUMBER=$(echo "$BUILD_INFO" | sed -n 's/.*"number":\([0-9]*\).*/\1/p' | head -1)
+              BUILDING=$(echo "$BUILD_INFO" | sed -n 's/.*"building":\([^,}]*\).*/\1/p' | head -1 | tr -d ' "')
+              RESULT=$(echo "$BUILD_INFO" | sed -n 's/.*"result":"\([^"]*\)".*/\1/p' | head -1)
+            fi
+            
+            # Handle null result (build still running)
+            if [ "$RESULT" = "null" ] || [ -z "$RESULT" ]; then
+              RESULT=""
+            fi
             
             # Set first build number if not set
             if [ -z "$FIRST_BUILD_NUMBER" ] && [ -n "$BUILD_NUMBER" ]; then
@@ -185,6 +197,8 @@ jobs:
               
               echo ""
               echo "=== Build Result ==="
+              echo "Build #$BUILD_NUMBER - Building: $BUILDING, Result: '$RESULT'"
+              
               if [ "$RESULT" = "SUCCESS" ]; then
                 echo "✓ Jenkins build completed successfully!"
                 echo "Build URL: $JENKINS_URL/job/$JENKINS_JOB/$BUILD_NUMBER"
@@ -195,6 +209,8 @@ jobs:
                 exit 1
               else
                 echo "⚠ Jenkins build completed with unknown result: $RESULT"
+                echo "Raw BUILD_INFO (last 500 chars):"
+                echo "$BUILD_INFO" | tail -c 500
                 exit 1
               fi
             fi
